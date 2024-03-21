@@ -1,0 +1,90 @@
+#! /bin/bash
+
+SYSFS_PREFIX=/sys/kernel/security/smzy/
+# DB_PREFIX=/etc/selinux/smzy/
+DB_PREFIX=./db/
+
+SENSITIVE_FILE=baseline
+SOFTWARE_FILE=anquanruanjian
+PRIVATE_FILE=siyoushuju
+ADMIN_FILE=sanyuan
+
+
+function line_buffered() # local function
+{
+	xargs --delimiter='\n' --max-args=1 echo
+}
+
+
+function import_sensitive_resource()
+{
+	sed -e '1d' -e '$d'  | # 去除首尾行
+		sed -e '/^#/d'  -e '/^$/d'| # 去除 "#" 开头的注释行和空行
+		sed -e 's/^0://' -e 's/;$//' | # 去除行首的 "0:" 和行尾的 ";"
+		line_buffered
+}
+
+function import_security_software()
+{
+	sed -e '1d' -e '$d'  | # 去除首尾行
+		sed -e '/^#/d'  -e '/^$/d'| # 去除 "#" 开头的注释行和空行
+		line_buffered
+}
+
+function import_private_data()
+{
+	sed -e '/^#/d'  -e '/^$/d'| # 去除 "#" 开头的注释行和空行
+		sed -e '/}$/d' | # 去除 "}" 行
+		( while read line ; do 
+				[[ $line =~ \{$ ]] && user=${line%\{} || echo $user:$line
+			done 
+		) | #
+		sed -e 's/^siyoushuju_//' -e 's/;$//'  | # 去除行首的用户前缀 "siyoushuju_" 和行尾的 ";"
+		line_buffered
+}
+
+
+function import_three_admin()
+{
+	sed -e '/^#/d'  -e '/^$/d'| # 去除 "#" 开头的注释行和空行
+		sed -e '/}$/d' | # 去除 "}" 行
+		( while read line ; do 
+				[[ $line =~ \{$ ]] && user=${line%\{} || echo $user:$line
+			done 
+		) | # 
+		sed -e 's/^sanyuan_//' | # 去除行首的用户前缀 "siyoushuju_"
+		line_buffered
+}
+
+function help()
+{
+	cat <<EOF
+$0 : 
+	-i, --import <type>			向内核导入指定类型的数据
+	-e, --export <type>			导出内核指定类型的数据
+
+type 支持 sensitive, software, private, admin 四种类型, * 表示全部类型.
+EOF
+}
+
+[ $# -lt 1 ] && { help ; exit -1 ; }
+
+case $1 in
+	help )
+		help; exit 0;;
+	-i | --import )
+		if [ ! $# -eq 2 ] ; then
+			{ help; exit -1; }
+		else
+			case $2 in 
+				sensitive ) import_sensitive_resource  <$DB_PREFIX/$SENSITIVE_FILE >$SYSFS_PREFIX/$SENSITIVE_FILE ;;
+				software ) import_security_software <$DB_PREFIX/$SOFTWARE_FILE >$SYSFS_PREFIX/$SOFTWARE_FILE ;;
+				private ) import_private_data <$DB_PREFIX/$PRIVATE_FILE >$SYSFS_PREFIX/$PRIVATE_FILE ;;
+				admin ) import_three_admin <$DB_PREFIX/$ADMIN_FILE >$SYSFS_PREFIX/$ADMIN_FILE ;;
+				* ) { echo "$2 not support by now"; help; exit -1; }
+			esac
+		fi
+		;;
+	-e | --export )
+		: ;;
+esac
